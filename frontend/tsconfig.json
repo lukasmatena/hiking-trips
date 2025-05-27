@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ES2015",
+    "strict": true,
+    "module": "ES2015",
+    "moduleResolution": "node", // Good default for resolving module paths
+    "rootDir": "./src",
+    "outDir": "./dist"
+  },
+  "include": [
+    "src/**/*"
+  ]
+}
