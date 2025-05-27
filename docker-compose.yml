@@ -1,0 +1,42 @@
+services:
+    db:
+        image: postgis/postgis:17-3.5
+        volumes:
+            - database_volume:/var/lib/postgresql/data
+        expose:
+            - 5432
+        networks:
+            - internal_net
+        environment:
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+            POSTGRES_DB: ${POSTGRES_DB}
+        restart: unless-stopped
+
+    nginx:
+        build: "./nginx"
+        restart: always
+        ports:
+            - 8080:80
+        depends_on:
+            - backend
+        networks:
+            - internal_net
+
+    backend:
+        build: "./backend"
+        volumes:
+            - /c/Users/lukas/Data/Programovani/Web/hiking_trips/backend/app:/home/app/
+        command: ["sh", "-c", "../venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000"]
+        expose:
+            - 8000
+        networks:
+            - internal_net
+        depends_on:
+            - db
+
+networks:
+    internal_net:
+
+volumes:
+    database_volume:
