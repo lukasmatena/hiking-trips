@@ -1,10 +1,9 @@
-FROM debian:stable
+FROM python:3.11-slim-bullseye
 
-RUN apt update && apt upgrade && apt -y install python3 pip python3-venv
 COPY ./requirements.txt /home/requirements.txt
 
-
 WORKDIR /home
-RUN python3 -m venv venv && venv/bin/pip install -r requirements.txt
+RUN python3 -m venv venv && venv/bin/pip install --no-cache-dir -r requirements.txt
 
+COPY ./app/* /home/app/
 WORKDIR /home/app
