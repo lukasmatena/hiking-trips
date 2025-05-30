@@ -1,8 +1,11 @@
-from fastapi import FastAPI, Depends, HTTPException
-from database import db_connection_pool_init, db_get_connection
 import logging
 import sys
 
+from fastapi import FastAPI, Depends, HTTPException
+
+from app_init import app_init
+from s3_handling import get_s3_client
+from database import db_get_connection, db_get_connection
 
 logging.basicConfig(
     level=logging.INFO,
@@ -13,7 +16,7 @@ logging.basicConfig(
     ]
 )
 
-app = FastAPI(lifespan=db_connection_pool_init)
+app = FastAPI(lifespan=app_init)
 
 
 
@@ -48,7 +51,7 @@ async def reset_db(conn = Depends(db_get_connection)):
                     CONSTRAINT fk_trips_photos
                         FOREIGN KEY (trip_id)
                         REFERENCES trips(trip_id)
-                        ON DELETE SET NULL
+                        ON DELETE RESTRICT
                 );
                 """)
             await conn.execute("""
@@ -85,3 +88,8 @@ async def get_trip(trip_id: int, conn = Depends(db_get_connection)):
     out = dict(trip_data)
     out["photos_table"] = photos_list
     return out
+
+
+@app.get("/s3_list_buckets/")
+async def list_buckets(s3_client = Depends(get_s3_client)):
+    return s3_client.list_buckets()
