@@ -56,6 +56,8 @@ services:
             S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
             S3_USERNAME: ${S3_USERNAME}
             S3_PASSWORD: ${S3_PASSWORD}
+            S3_BUCKET: ${S3_BUCKET}
+            S3_REGION: ${S3_REGION}
 
 networks:
     internal_net:

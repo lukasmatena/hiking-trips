@@ -1,7 +1,9 @@
 import logging
 import sys
+import uuid
+import os
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, concurrency
 import asyncpg
 
 from app_init import app_init
@@ -105,21 +107,30 @@ async def delete_trip(trip_id: int, conn = Depends(db_get_connection)):
         raise HTTPException(status_code=503, detail="Unable to delete trip from db")
 
 @app.delete("/photos/{photo_id}")
-async def delete_photo(photo_id: int, conn = Depends(db_get_connection)):
+async def delete_photo(photo_id: int, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
     try:
-        async with conn.transaction():
+        async with conn.transaction(readonly = False):
+            record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
+            if not record:
+                raise HTTPException(status_code=404, detail="Photo not found.")
+            await concurrency.run_in_threadpool(s3_client.delete_object, Bucket = app.state.s3_bucket_name, Key = record["s3_key"])
             await conn.execute("DELETE FROM photos WHERE photo_id=$1", photo_id)
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        logging.warning(f"Problem deleting photo: {type(e).__name__}")
         raise HTTPException(status_code=503, detail="Unable to delete photo from db")
     
 @app.post("/photos/{trip_id}")
 async def upload_photo(trip_id: int, file: UploadFile, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
     try:
-        s3_key = str(trip_id) + "/" + file.filename
-        s3_client.upload_fileobj(Fileobj = file.file, Bucket = "bagr", Key = s3_key)
-    
+        if not file.filename:
+            raise HTTPException(status_code=400)
+        _, ext = os.path.splitext(file.filename)
+        s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
         async with conn.transaction():
             await conn.execute("INSERT INTO photos (trip_id, s3_key) VALUES ($1, $2);", trip_id, s3_key)
+            await concurrency.run_in_threadpool(s3_client.upload_fileobj, Fileobj = file.file, Bucket = app.state.s3_bucket_name, Key = s3_key)
     except asyncpg.exceptions.ForeignKeyViolationError:
         raise HTTPException(status_code=404, detail="Cannot upload photo: trip does not exist.")
     except Exception as e:
@@ -133,8 +144,8 @@ async def get_photo_url(photo_id: int, conn = Depends(db_get_connection), s3_cli
             record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
             if not record:
                 raise HTTPException(status_code=404, detail="Photo not found")
-            url = s3_client.generate_presigned_url('get_object',
-                                    Params={'Bucket': "bagr", 'Key': record["s3_key"]},
+            url = await concurrency.run_in_threadpool(s3_client.generate_presigned_url, ClientMethod = 'get_object',
+                                    Params={'Bucket': app.state.s3_bucket_name, 'Key': record["s3_key"]},
                                     ExpiresIn=3600)
             return url
     except HTTPException as e:
@@ -142,8 +153,3 @@ async def get_photo_url(photo_id: int, conn = Depends(db_get_connection), s3_cli
     except Exception as e:
         logging.warning(f"Error getting photo url: {type(e).__name__}")
         raise HTTPException(status_code=503, detail="Unable to get photo url")
-
-
-@app.get("/s3_list_buckets/")
-async def list_buckets(s3_client = Depends(get_s3_client)):
-    return s3_client.list_buckets()

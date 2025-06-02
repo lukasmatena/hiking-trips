@@ -25,12 +25,15 @@ async def app_init(app: FastAPI):
     s3_url  = environ.get("S3_ENDPOINT_URL")
     s3_user = environ.get("S3_USERNAME")
     s3_pass = environ.get("S3_PASSWORD")
-    s3_client = boto3.client('s3', endpoint_url=s3_url, region_name="eu-central-1", aws_access_key_id = s3_user, aws_secret_access_key = s3_pass)
+    s3_bucket_name = environ.get("S3_BUCKET")
+    s3_region = environ.get("S3_REGION", None)
+    s3_client = boto3.client('s3', endpoint_url=s3_url, region_name=s3_region, aws_access_key_id = s3_user, aws_secret_access_key = s3_pass)
     logging.info(" - S3 client created")
 
     # Save both to app state
     app.state.pool = pool
     app.state.s3_client = s3_client
+    app.state.s3_bucket_name = s3_bucket_name
 
     logging.info("Application initialization finished.")
     yield
