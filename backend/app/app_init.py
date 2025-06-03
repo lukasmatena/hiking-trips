@@ -43,3 +43,5 @@ async def app_init(app: FastAPI):
     await pool.close()
     s3_client.close()
     logging.info("Cleanup complete.")
+
+app = FastAPI(lifespan=app_init, openapi_prefix="/api")

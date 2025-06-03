@@ -6,7 +6,7 @@ import os
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, concurrency
 import asyncpg
 
-from app_init import app_init
+from app_init import app
 from s3_handling import get_s3_client
 from database import db_get_connection, db_get_connection, CreateTripData
 
@@ -19,10 +19,8 @@ logging.basicConfig(
     ]
 )
 
-app = FastAPI(lifespan=app_init)
 
-
-@app.get("/read_db/")
+@app.get("/read_db")
 async def read_db(conn = Depends(db_get_connection)):    
     try:
         async with conn.transaction(readonly = True):
