@@ -5,10 +5,15 @@ import asyncpg
 from pydantic import BaseModel
 from datetime import date
 
-async def db_get_connection(request: Request):
+def db_get_pool(request: Request):
     if not hasattr(request.app.state, "pool") or not request.app.state.pool:
         raise HTTPException(status_code=503, detail="DB pool not initialized.")
-    async with request.app.state.pool.acquire() as conn:
+    return request.app.state.pool
+
+
+
+async def db_get_connection(request: Request):
+    async with db_get_pool(request).acquire() as conn:
         yield conn
 
 
