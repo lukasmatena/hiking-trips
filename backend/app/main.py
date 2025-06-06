@@ -20,6 +20,28 @@ logging.basicConfig(
     ]
 )
 
+
+def get_next_prev_query() -> str:
+    return """
+        WITH ordered_trips AS (
+            SELECT
+                trip_id,
+                title,
+                date_start,
+                LAG(trip_id, 1) OVER (ORDER BY "date_start" ASC, trip_id ASC) AS prev_trip_id,
+                LEAD(trip_id, 1) OVER (ORDER BY "date_start" ASC, trip_id ASC) AS next_trip_id
+            FROM
+                trips
+        )
+        SELECT
+            prev_trip_id,
+            next_trip_id
+        FROM
+            ordered_trips
+        WHERE
+            trip_id = $1;
+    """
+
 async def get_photo_url_internal(photo_id: int, request: Request, s3_client) -> str:
     pool = await db_get_pool(request)
     async with pool.acquire() as conn:
@@ -103,11 +125,11 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
             if not trip_data:
                 logging.error(f"Trip {trip_id} not found.")
                 raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found.")
+            neighbors = await conn.fetchrow(get_next_prev_query(), trip_id)
         coros = [get_photo_url_internal(p["photo_id"], request, s3_client) for p in photos_list]
         urls = await asyncio.gather(*coros)
-        out = {}
-        for k,v in trip_data.items():
-            out[k] = v
+        out = {k:v for (k,v) in trip_data.items()}
+        out = out | {k:v for (k,v) in neighbors.items()}
         out["urls"] = urls
         return out
     

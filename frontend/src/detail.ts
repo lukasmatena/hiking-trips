@@ -5,6 +5,8 @@ interface TripDetail {
     date_start: string;
     date_end: string;
     urls: string[];
+    prev_trip_id: number | null;
+    next_trip_id: number | null;
 }
 
 
@@ -12,8 +14,13 @@ async function createPage(tripDetail: TripDetail)
 {
     let title = document.getElementById("titleElement") as HTMLHeadingElement
     let desc = document.getElementById("descriptionElement") as HTMLHeadingElement
+    let prev = document.getElementById("prevTripElement") as HTMLAnchorElement
+    let next = document.getElementById("nextTripElement") as HTMLAnchorElement
     title.textContent = tripDetail.title
     desc.textContent = tripDetail.description
+
+    prev.href = tripDetail.prev_trip_id ? "detail.html?trip_id=" + tripDetail.prev_trip_id.toString() : ""
+    next.href = tripDetail.next_trip_id ? "detail.html?trip_id=" + tripDetail.next_trip_id.toString() : ""
 
     let photosElement = document.getElementById("photosElement") as HTMLDivElement
     const photoUrls: string[] = tripDetail.urls

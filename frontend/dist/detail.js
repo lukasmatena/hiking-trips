@@ -12,8 +12,12 @@ function createPage(tripDetail) {
     return __awaiter(this, void 0, void 0, function* () {
         let title = document.getElementById("titleElement");
         let desc = document.getElementById("descriptionElement");
+        let prev = document.getElementById("prevTripElement");
+        let next = document.getElementById("nextTripElement");
         title.textContent = tripDetail.title;
         desc.textContent = tripDetail.description;
+        prev.href = tripDetail.prev_trip_id ? "detail.html?trip_id=" + tripDetail.prev_trip_id.toString() : "";
+        next.href = tripDetail.next_trip_id ? "detail.html?trip_id=" + tripDetail.next_trip_id.toString() : "";
         let photosElement = document.getElementById("photosElement");
         const photoUrls = tripDetail.urls;
         for (let i = 0; i < photoUrls.length; ++i) {
