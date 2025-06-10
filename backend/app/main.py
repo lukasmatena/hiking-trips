@@ -3,13 +3,15 @@ import sys
 import uuid
 import os
 import asyncio
+import datetime
 
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, concurrency, Request
+from fastapi import Depends, HTTPException, UploadFile, concurrency, Request
 import asyncpg
+from pydantic import BaseModel
 
 from app_init import app
 from s3_handling import get_s3_client
-from database import db_get_connection, db_get_connection, CreateTripData, db_get_pool
+from database import db_get_connection, db_get_connection, db_get_pool
 
 logging.basicConfig(
     level=logging.INFO,
@@ -100,21 +102,37 @@ async def reset_db(conn = Depends(db_get_connection)):
         raise HTTPException(status_code=503, detail = f"{type(e).__name__}")
 
 
+class TripBasicData(BaseModel):
+    trip_id: int
+    title: str
+    date_start: datetime.date
+    date_end: datetime.date
 
-@app.get("/trips")
+
+@app.get("/trips", response_model=list[TripBasicData])
 async def get_trips(conn = Depends(db_get_connection)):
     try:
         async with conn.transaction(readonly = True):
             trips = await conn.fetch("SELECT trip_id,title,date_start,date_end FROM trips;")
-            return trips
+            return [dict(trip) for trip in trips]
     except HTTPException as e:
         raise e
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Unable to retrieve trips: {type(e).__str__}")
+        raise HTTPException(status_code=503, detail=f"Unable to retrieve trips: {type(e).__name__}")
 
 
 
-@app.get("/trips/{trip_id}")
+class TripDetailData(BaseModel):
+    trip_id: int
+    title: str
+    description: str
+    date_start: datetime.date
+    date_end: datetime.date
+    prev_trip_id: int | None
+    next_trip_id: int | None
+    urls: list[str]
+
+@app.get("/trips/{trip_id}", response_model=TripDetailData)
 async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
     try:
         async with conn.transaction(readonly = True):
@@ -138,11 +156,14 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
     except Exception as e:
         logging.error(f"Unable to retrieve trip from db: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Error: {type(e).__name__}")
-    out = dict(trip_data)
-    out["photo_ids"] = [a["photo_id"] for a in photos_list]
-    return out
 
 
+
+class CreateTripData(BaseModel):
+    title: str
+    text: str
+    start_date: datetime.date
+    end_date: datetime.date
 
 @app.post("/trips/")
 async def create_trip(trip_data: CreateTripData, conn = Depends(db_get_connection)):
