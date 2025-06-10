@@ -21,10 +21,16 @@ function createPage(tripDetail) {
         let photosElement = document.getElementById("photosElement");
         const photoUrls = tripDetail.urls;
         for (let i = 0; i < photoUrls.length; ++i) {
+            const photoTitleText = "photo number " + i.toString();
+            const photoUrl = photoUrls[i];
             let photoLink = document.createElement("a");
-            photoLink.href = photoUrls[i];
-            photoLink.textContent = "photo number " + i.toString();
+            let photoImage = document.createElement("img");
+            photoImage.src = photoUrl;
+            photoImage.title = photoTitleText;
+            photoImage.alt = photoTitleText;
+            photoLink.href = photoUrl;
             let brElement = document.createElement("br");
+            photoLink.appendChild(photoImage);
             photosElement.appendChild(photoLink);
             photosElement.appendChild(brElement);
         }

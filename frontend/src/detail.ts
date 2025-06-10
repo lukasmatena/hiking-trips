@@ -25,10 +25,16 @@ async function createPage(tripDetail: TripDetail)
     let photosElement = document.getElementById("photosElement") as HTMLDivElement
     const photoUrls: string[] = tripDetail.urls
     for (let i=0; i<photoUrls.length; ++i) {
+        const photoTitleText: string = "photo number " + i.toString()
+        const photoUrl: string = photoUrls[i]
         let photoLink = document.createElement("a") as HTMLAnchorElement
-        photoLink.href = photoUrls[i]
-        photoLink.textContent = "photo number " + i.toString()
+        let photoImage = document.createElement("img") as HTMLImageElement
+        photoImage.src = photoUrl
+        photoImage.title = photoTitleText
+        photoImage.alt = photoTitleText
+        photoLink.href = photoUrl
         let brElement = document.createElement("br") as HTMLBRElement
+        photoLink.appendChild(photoImage)
         photosElement.appendChild(photoLink)
         photosElement.appendChild(brElement)
     }
