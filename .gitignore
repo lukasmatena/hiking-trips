@@ -1,2 +1,3 @@
 plan.md
 .env
+frontend/dist/*.js
