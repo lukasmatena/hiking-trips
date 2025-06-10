@@ -44,7 +44,7 @@ def get_next_prev_query() -> str:
             trip_id = $1;
     """
 
-async def get_photo_url_internal(photo_id: int, request: Request, s3_client) -> str:
+async def get_photo_url_internal(photo_id: int, request: Request, s3_client) -> tuple[int, str]:
     pool = await db_get_pool(request)
     async with pool.acquire() as conn:
         async with conn.transaction(readonly = True):
@@ -55,7 +55,7 @@ async def get_photo_url_internal(photo_id: int, request: Request, s3_client) -> 
     url = await concurrency.run_in_threadpool(s3_client.generate_presigned_url, ClientMethod = 'get_object',
                             Params={'Bucket': app.state.s3_bucket_name, 'Key': record["s3_key"]},
                             ExpiresIn=3600)
-    return url
+    return (photo_id, url)
 
 
 
@@ -121,7 +121,9 @@ async def get_trips(conn = Depends(db_get_connection)):
         raise HTTPException(status_code=503, detail=f"Unable to retrieve trips: {type(e).__name__}")
 
 
-
+class PhotoData(BaseModel):
+    url: str
+    photo_id: int
 class TripDetailData(BaseModel):
     trip_id: int
     title: str
@@ -130,7 +132,7 @@ class TripDetailData(BaseModel):
     date_end: datetime.date
     prev_trip_id: int | None
     next_trip_id: int | None
-    urls: list[str]
+    photos: list[PhotoData]
 
 @app.get("/trips/{trip_id}", response_model=TripDetailData)
 async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
@@ -145,10 +147,10 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
                 raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found.")
             neighbors = await conn.fetchrow(get_next_prev_query(), trip_id)
         coros = [get_photo_url_internal(p["photo_id"], request, s3_client) for p in photos_list]
-        urls = await asyncio.gather(*coros)
+        photos = await asyncio.gather(*coros)
         out = {k:v for (k,v) in trip_data.items()}
         out = out | {k:v for (k,v) in neighbors.items()}
-        out["urls"] = urls
+        out["photos"] = [ { "photo_id": photo_id, "url": url } for (photo_id, url) in photos ]
         return out
     
     except HTTPException as e:
@@ -222,16 +224,3 @@ async def upload_photo(trip_id: int, file: UploadFile, conn = Depends(db_get_con
     except Exception as e:
         logging.warning(f"Error uploading photo: {type(e).__name__}")
         raise HTTPException(status_code=503, detail="Unable to upload photo")
-
-
-
-@app.get("/photo/{photo_id}")
-async def get_photo_url(photo_id: int, request: Request, s3_client = Depends(get_s3_client)):
-    try:
-        url: str = await get_photo_url_internal(photo_id, request, s3_client)
-        return { "url": url}
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logging.warning(f"Error getting photo url: {type(e).__name__}")
-        raise HTTPException(status_code=503, detail="Unable to get photo url")
