@@ -13,7 +13,14 @@ interface TripDetail {
     next_trip_id: number | null;
 }
 
-function confirm_edits(tripData: TripDetail): void
+interface TripUpdateData {
+    title: string;
+    desc: string;
+    date_start: string;
+    date_end: string;
+}
+
+async function confirm_edits(tripData: TripDetail): Promise<void>
 {
     let newTripData: TripDetail
     const editTitleElement = document.getElementById("editTitleElement") as HTMLInputElement
@@ -39,9 +46,21 @@ function confirm_edits(tripData: TripDetail): void
     console.log(editEndElement.value)
     console.log(photosToDelete)
 
-    // TODO: call the API endpoint to update database
+    const tripUpdateData: TripUpdateData = {
+        title: editTitleElement.value,
+        desc: editDescElement.value,
+        date_start: editStartElement.value,
+        date_end: editEndElement.value
+    }
+    console.log(tripUpdateData)
 
-
+    let response: Response = await fetch("/api/trips/" + tripData.trip_id.toString(), {
+        method: "PUT",
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(tripUpdateData),
+    })
+    if (response.ok)
+        window.location.href = "index.html"
 }
 
 function append_new_br(div: HTMLDivElement): void

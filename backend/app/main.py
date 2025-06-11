@@ -161,22 +161,39 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
 
 
 
-class CreateTripData(BaseModel):
+class TripUpdateData(BaseModel):
     title: str
-    text: str
-    start_date: datetime.date
-    end_date: datetime.date
+    desc: str
+    date_start: datetime.date
+    date_end: datetime.date
+
+
+@app.put("/trips/{trip_id}")
+async def update_trip(trip_id: int, updated_trip: TripUpdateData, conn = Depends(db_get_connection)):
+    try:
+        async with conn.transaction():
+            await conn.execute("""
+                UPDATE trips
+                SET title=$1,
+                    description=$2,
+                    date_start=$3,
+                    date_end=$4
+                WHERE trip_id = $5;
+            """, updated_trip.title, updated_trip.desc, updated_trip.date_start, updated_trip.date_end, trip_id)
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Unable to update trip {type(e).__name__}")
 
 @app.post("/trips/")
-async def create_trip(trip_data: CreateTripData, conn = Depends(db_get_connection)):
+async def create_new_trip(conn = Depends(db_get_connection)):
+    init_date = datetime.date(2007, 5, 20)
     try:
         async with conn.transaction():
             await conn.execute("""
                 INSERT INTO trips (title, description, date_start, date_end)
-                VALUES ($1, $2, $3, $4);""",
-                trip_data.title, trip_data.text, trip_data.start_date, trip_data.end_date)
+                VALUES ('NEW TRIP', 'desc', $1, $1);""",
+                init_date)
     except Exception as e:
-        raise HTTPException(status_code=503, detail="Unable to add trip into db")
+        raise HTTPException(status_code=503, detail=f"Unable to add trip into db: {type(e).__name__}")
 
 
 
