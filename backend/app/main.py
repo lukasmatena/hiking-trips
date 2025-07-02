@@ -5,9 +5,9 @@ import os
 import asyncio
 import datetime
 
-from fastapi import Depends, HTTPException, UploadFile, concurrency, Request
+from fastapi import Depends, HTTPException, UploadFile, concurrency, Request, Form
 import asyncpg
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from app_init import app
 from s3_handling import get_s3_client
@@ -113,7 +113,7 @@ class TripBasicData(BaseModel):
 async def get_trips(conn = Depends(db_get_connection)):
     try:
         async with conn.transaction(readonly = True):
-            trips = await conn.fetch("SELECT trip_id,title,date_start,date_end FROM trips;")
+            trips = await conn.fetch("SELECT trip_id,title,date_start,date_end FROM trips ORDER BY date_start DESC;")
             return [dict(trip) for trip in trips]
     except HTTPException as e:
         raise e
@@ -138,7 +138,7 @@ class TripDetailData(BaseModel):
 async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
     try:
         async with conn.transaction(readonly = True):
-            query = f"SELECT * FROM trips WHERE trip_id=$1"
+            query = "SELECT * FROM trips WHERE trip_id=$1"
             trip_data = await conn.fetchrow(query, trip_id)
             query = "SELECT photo_id FROM photos WHERE trip_id=$1;"
             photos_list = await conn.fetch(query, trip_id)
@@ -166,11 +166,18 @@ class TripUpdateData(BaseModel):
     desc: str
     date_start: datetime.date
     date_end: datetime.date
-
+    photos_to_delete: list[int]
 
 @app.put("/trips/{trip_id}")
-async def update_trip(trip_id: int, updated_trip: TripUpdateData, conn = Depends(db_get_connection)):
+async def update_trip(
+    trip_id: int,
+    updated_trip_json: str = Form(...), # Changed to Form parameter
+    files: list[UploadFile] = [],
+    conn = Depends(db_get_connection),
+    s3_client = Depends(get_s3_client)
+):
     try:
+        updated_trip = TripUpdateData.model_validate_json(updated_trip_json) # Parse JSON string
         async with conn.transaction():
             await conn.execute("""
                 UPDATE trips
@@ -180,12 +187,33 @@ async def update_trip(trip_id: int, updated_trip: TripUpdateData, conn = Depends
                     date_end=$4
                 WHERE trip_id = $5;
             """, updated_trip.title, updated_trip.desc, updated_trip.date_start, updated_trip.date_end, trip_id)
+
+            for photo_id in updated_trip.photos_to_delete:
+                record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
+                if not record:
+                    raise HTTPException(status_code=404, detail="Photo not found.")
+                await concurrency.run_in_threadpool(s3_client.delete_object, Bucket = app.state.s3_bucket_name, Key = record["s3_key"])
+                await conn.execute("DELETE FROM photos WHERE photo_id=$1", photo_id)
+
+            for file in files:
+                if not file.filename:
+                    raise HTTPException(status_code=400)
+                _, ext = os.path.splitext(file.filename)
+                s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
+                await conn.execute("INSERT INTO photos (trip_id, s3_key) VALUES ($1, $2);", trip_id, s3_key)
+                await concurrency.run_in_threadpool(s3_client.upload_fileobj, Fileobj = file.file, Bucket = app.state.s3_bucket_name, Key = s3_key)                
+    except ValidationError as e:
+        logging.error(f"Validation error updating trip {trip_id}: {e.errors()}", exc_info=True)
+        raise HTTPException(status_code=422, detail=e.errors())
+    except HTTPException as e:
+        raise e
     except Exception as e:
+        logging.error(f"Unable to update trip {trip_id}: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Unable to update trip {type(e).__name__}")
 
 @app.post("/trips/")
 async def create_new_trip(conn = Depends(db_get_connection)):
-    init_date = datetime.date(2007, 5, 20)
+    init_date = datetime.date.today()
     try:
         async with conn.transaction():
             await conn.execute("""
@@ -206,38 +234,3 @@ async def delete_trip(trip_id: int, conn = Depends(db_get_connection)):
         raise HTTPException(status_code=400, detail="Cannot delete trip as it has photos attached.")
     except Exception as e:
         raise HTTPException(status_code=503, detail="Unable to delete trip from db")
-
-
-
-@app.delete("/photos/{photo_id}")
-async def delete_photo(photo_id: int, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
-    try:
-        async with conn.transaction(readonly = False):
-            record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
-            if not record:
-                raise HTTPException(status_code=404, detail="Photo not found.")
-            await concurrency.run_in_threadpool(s3_client.delete_object, Bucket = app.state.s3_bucket_name, Key = record["s3_key"])
-            await conn.execute("DELETE FROM photos WHERE photo_id=$1", photo_id)
-    except HTTPException as e:
-        raise e
-    except Exception as e:
-        logging.warning(f"Problem deleting photo: {type(e).__name__}")
-        raise HTTPException(status_code=503, detail="Unable to delete photo from db")
-
-
-
-@app.post("/photos/{trip_id}")
-async def upload_photo(trip_id: int, file: UploadFile, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
-    try:
-        if not file.filename:
-            raise HTTPException(status_code=400)
-        _, ext = os.path.splitext(file.filename)
-        s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
-        async with conn.transaction():
-            await conn.execute("INSERT INTO photos (trip_id, s3_key) VALUES ($1, $2);", trip_id, s3_key)
-            await concurrency.run_in_threadpool(s3_client.upload_fileobj, Fileobj = file.file, Bucket = app.state.s3_bucket_name, Key = s3_key)
-    except asyncpg.exceptions.ForeignKeyViolationError:
-        raise HTTPException(status_code=404, detail="Cannot upload photo: trip does not exist.")
-    except Exception as e:
-        logging.warning(f"Error uploading photo: {type(e).__name__}")
-        raise HTTPException(status_code=503, detail="Unable to upload photo")

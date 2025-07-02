@@ -18,17 +18,17 @@ interface TripUpdateData {
     desc: string;
     date_start: string;
     date_end: string;
+    photos_to_delete: number[];
 }
 
 async function confirm_edits(tripData: TripDetail): Promise<void>
 {
-    let newTripData: TripDetail
     const editTitleElement = document.getElementById("editTitleElement") as HTMLInputElement
     const editDescElement = document.getElementById("editDescElement") as HTMLTextAreaElement
     const editStartElement = document.getElementById("editStartElement") as HTMLInputElement
     const editEndElement = document.getElementById("editEndElement") as HTMLInputElement
 
-    let photosToDelete: Number[] = []
+    let photosToDelete: number[] = []
     const images = document.getElementsByTagName("input")
     for (let image of images) {
         const prefix: string = "checkbox_for_photo_"
@@ -40,27 +40,38 @@ async function confirm_edits(tripData: TripDetail): Promise<void>
         }
     }
 
-    console.log(editTitleElement.value)
-    console.log(editDescElement.value)
-    console.log(editStartElement.value)
-    console.log(editEndElement.value)
-    console.log(photosToDelete)
-
     const tripUpdateData: TripUpdateData = {
         title: editTitleElement.value,
         desc: editDescElement.value,
         date_start: editStartElement.value,
-        date_end: editEndElement.value
+        date_end: editEndElement.value,
+        photos_to_delete: photosToDelete
     }
-    console.log(tripUpdateData)
+
+    const formData = new FormData();
+    formData.append('updated_trip_json', JSON.stringify(tripUpdateData));
+
+    const editFilesDiv = document.getElementById("editFilesDiv") as HTMLDivElement;
+    const filePickers = editFilesDiv.querySelectorAll('input[type="file"]');
+    for (const filePicker_ of filePickers) {
+        const filePicker = filePicker_ as HTMLInputElement;
+        if (filePicker.files && filePicker.files.length > 0) {
+            for (const file of filePicker.files) {
+                formData.append('files', file);
+            }
+        }
+    }
 
     let response: Response = await fetch("/api/trips/" + tripData.trip_id.toString(), {
         method: "PUT",
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(tripUpdateData),
-    })
-    if (response.ok)
+        body: formData,
+    });
+
+    if (response.ok) {
         window.location.href = "index.html"
+    } else {
+        console.error("Failed to update trip:", await response.text());
+    }
 }
 
 function append_new_br(div: HTMLDivElement): void
