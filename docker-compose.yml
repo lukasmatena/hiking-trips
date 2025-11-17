@@ -25,28 +25,13 @@ services:
             POSTGRES_DB: ${POSTGRES_DB}
         restart: unless-stopped
 
-    nginx:
-        build:
-            context: .
-            dockerfile: ./nginx/Dockerfile
-
-        restart: always
-        ports:
-            - 8080:80
-        depends_on:
-            - backend
-        networks:
-            - internal_net
-        volumes: # Only to speed up testing.
-            - ./frontend/dist:/home/www
-
     backend:
         build: "./backend"
         volumes: # Only to speed up testing.
             - ./backend/app:/home/app/
         command: ["sh", "-c", "../venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000 --proxy-headers"]
-        expose:
-            - 8000
+        ports:
+            - 8000:8000
         networks:
             - internal_net
         depends_on:
