@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from os import environ
+from google.cloud import storage
+import google.cloud
 import asyncpg
-import boto3
 import logging
 from contextlib import asynccontextmanager
 
@@ -20,20 +21,35 @@ async def app_init(app: FastAPI):
     pool = await asyncpg.create_pool(dsn = db_url, timeout = 5)
     logging.info(" - db connection pool created.")
 
-    # Initialize S3 handle
-    logging.info(" - init S3 connection...")
-    s3_url  = environ.get("S3_ENDPOINT_URL")
-    s3_user = environ.get("S3_USERNAME")
-    s3_pass = environ.get("S3_PASSWORD")
-    s3_bucket_name = environ.get("S3_BUCKET")
-    s3_region = environ.get("S3_REGION", None)
-    s3_client = boto3.client('s3', endpoint_url=s3_url, region_name=s3_region, aws_access_key_id = s3_user, aws_secret_access_key = s3_pass)
-    logging.info(" - S3 client created")
+    # Initialize GCP Storage handle
+    gcp_storage_client = storage.Client()
+    logging.info(" - GCP Storage client created")
+    try:
+        bucket_name: str | None = environ.get("GCP_STORAGE_BUCKET_NAME")
+        if not bucket_name:
+            raise Exception("ERROR: unknown GCP Storage bucket name")
+        gcp_storage_client.create_bucket(bucket_name, timeout=10)
+        logging.info(f" - GCP Storage bucket created ({bucket_name})")
+    except google.cloud.exceptions.Conflict:
+        logging.info(f" - GCP Storage bucket already exists ({bucket_name})")
+    except Exception as e:
+        logging.info(f" - ERROR: Unable to create GCP Storage bucket ({bucket_name})")
+        raise e
+
 
     # Save both to app state
     app.state.pool = pool
-    app.state.s3_client = s3_client
-    app.state.s3_bucket_name = s3_bucket_name
+
+    TODO:
+    - store the bucket, not client.
+    - add docker volume for the gcp
+    - make sure that errors propagate to frontend (like the one with deleting non-existent files)
+    - put gcp code into a separate file
+
+
+
+
+    app.state.gcp_storage_client = gcp_storage_client
 
     logging.info("Application initialization finished.")
     yield
@@ -41,7 +57,6 @@ async def app_init(app: FastAPI):
     # Cleanup
     logging.info("Cleaning up on application close...")
     await pool.close()
-    s3_client.close()
     logging.info("Cleanup complete.")
 
 app = FastAPI(lifespan=app_init, openapi_prefix="/api")

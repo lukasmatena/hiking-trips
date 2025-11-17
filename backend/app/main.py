@@ -4,14 +4,17 @@ import uuid
 import os
 import asyncio
 import datetime
+import urllib
 
-from fastapi import Depends, HTTPException, UploadFile, concurrency, Request, Form
+from fastapi import Depends, HTTPException, UploadFile, Request, Form
 import asyncpg
 from pydantic import BaseModel, ValidationError
 
 from app_init import app
-from s3_handling import get_s3_client
+from s3_handling import get_storage_bucket
 from database import db_get_connection, db_get_connection, db_get_pool
+
+from google.cloud import storage
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,17 +47,24 @@ def get_next_prev_query() -> str:
             trip_id = $1;
     """
 
-async def get_photo_url_internal(photo_id: int, request: Request, s3_client) -> tuple[int, str]:
+async def get_photo_url_internal(photo_id: int, request: Request, gcp_bucket: storage.Bucket) -> tuple[int, str]:
     pool = await db_get_pool(request)
     async with pool.acquire() as conn:
         async with conn.transaction(readonly = True):
             record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
-    
     if not record:
         raise HTTPException(status_code=404, detail="Photo not found")
-    url = await concurrency.run_in_threadpool(s3_client.generate_presigned_url, ClientMethod = 'get_object',
-                            Params={'Bucket': app.state.s3_bucket_name, 'Key': record["s3_key"]},
-                            ExpiresIn=3600)
+
+    s3_key: str = record["s3_key"]
+    
+    if os.environ.get("STORAGE_EMULATOR_HOST"):
+        # This is local development. Do not bother with signed URLs.
+        encoded_key = urllib.parse.quote(s3_key, safe='')
+        url = f"http://localhost:4443/download/storage/v1/b/{gcp_bucket.name}/o/{encoded_key}?alt=media"
+    else:
+        url = await asyncio.to_thread(gcp_bucket.get_blob(s3_key).generate_signed_url,
+                                  expiration=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120))
+    logging.info(f"{url}")
     return (photo_id, url)
 
 
@@ -135,7 +145,7 @@ class TripDetailData(BaseModel):
     photos: list[PhotoData]
 
 @app.get("/trips/{trip_id}", response_model=TripDetailData)
-async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), s3_client = Depends(get_s3_client)):
+async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), gcp_bucket = Depends(get_storage_bucket)):
     try:
         async with conn.transaction(readonly = True):
             query = "SELECT * FROM trips WHERE trip_id=$1"
@@ -146,7 +156,7 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
                 logging.error(f"Trip {trip_id} not found.")
                 raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found.")
             neighbors = await conn.fetchrow(get_next_prev_query(), trip_id)
-        coros = [get_photo_url_internal(p["photo_id"], request, s3_client) for p in photos_list]
+        coros = [get_photo_url_internal(p["photo_id"], request, gcp_bucket) for p in photos_list]
         photos = await asyncio.gather(*coros)
         out = {k:v for (k,v) in trip_data.items()}
         out = out | {k:v for (k,v) in neighbors.items()}
@@ -174,7 +184,7 @@ async def update_trip(
     updated_trip_json: str = Form(...), # Changed to Form parameter
     files: list[UploadFile] = [],
     conn = Depends(db_get_connection),
-    s3_client = Depends(get_s3_client)
+    gcp_bucket = Depends(get_storage_bucket)
 ):
     try:
         updated_trip = TripUpdateData.model_validate_json(updated_trip_json) # Parse JSON string
@@ -192,7 +202,7 @@ async def update_trip(
                 record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
                 if not record:
                     raise HTTPException(status_code=404, detail="Photo not found.")
-                await concurrency.run_in_threadpool(s3_client.delete_object, Bucket = app.state.s3_bucket_name, Key = record["s3_key"])
+                await asyncio.to_thread(gcp_bucket.delete_blob, record["s3_key"])
                 await conn.execute("DELETE FROM photos WHERE photo_id=$1", photo_id)
 
             for file in files:
@@ -201,7 +211,10 @@ async def update_trip(
                 _, ext = os.path.splitext(file.filename)
                 s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
                 await conn.execute("INSERT INTO photos (trip_id, s3_key) VALUES ($1, $2);", trip_id, s3_key)
-                await concurrency.run_in_threadpool(s3_client.upload_fileobj, Fileobj = file.file, Bucket = app.state.s3_bucket_name, Key = s3_key)                
+                bucket: storage.Bucket = gcp_bucket
+                blob = bucket.blob(s3_key)
+                await asyncio.to_thread(blob.upload_from_file, file.file, rewind=True)
+
     except ValidationError as e:
         logging.error(f"Validation error updating trip {trip_id}: {e.errors()}", exc_info=True)
         raise HTTPException(status_code=422, detail=e.errors())

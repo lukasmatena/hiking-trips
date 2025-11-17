@@ -1,7 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import  Request, HTTPException
 
-async def get_s3_client(request: Request):
-    if not hasattr(request.app.state, "s3_client") or not request.app.state.s3_client:
+from google.cloud import storage
+import os
+
+async def get_storage_bucket(request: Request):
+    if not hasattr(request.app.state, "gcp_storage_client") or not request.app.state.gcp_storage_client:
         raise HTTPException(status_code=503, detail="Unable to get s3 connection.")
-    yield request.app.state.s3_client
+    
+    yield request.app.state.gcp_storage_client.bucket(os.environ.get("GCP_STORAGE_BUCKET_NAME"))

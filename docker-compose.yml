@@ -1,15 +1,16 @@
 services:
-    minios3:
-        image: minio/minio
-        ports:
-            - 9001:9001
-        volumes:
-            - s3_mock_volume:/data
-        command: server /data --console-address ":9001"
+    gcs-emulator:
+        image: fsouza/fake-gcs-server:latest
         networks:
             - internal_net
-        expose:
-            - 9000
+        ports:
+          - 4443:4443
+        command:
+          - "-external-url=http://gcs-emulator:4443"
+          - "-scheme=http"
+          - "-port=4443"
+          - "-backend=memory"
+        
 
     db:
         image: postgis/postgis:17-3.5
@@ -36,22 +37,18 @@ services:
             - internal_net
         depends_on:
             - db
-            - minios3
+            - gcs-emulator
         environment:
             POSTGRES_USER: ${POSTGRES_USER}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
             POSTGRES_DB: ${POSTGRES_DB}
             POSTGRES_HOST: db
             POSTGRES_PORT: 5432
-            S3_ENDPOINT_URL: ${S3_ENDPOINT_URL}
-            S3_USERNAME: ${S3_USERNAME}
-            S3_PASSWORD: ${S3_PASSWORD}
-            S3_BUCKET: ${S3_BUCKET}
-            S3_REGION: ${S3_REGION}
+            STORAGE_EMULATOR_HOST: http://gcs-emulator:4443
+            GCP_STORAGE_BUCKET_NAME: ${GCP_STORAGE_BUCKET_NAME}
 
 networks:
     internal_net:
 
 volumes:
     database_volume:
-    s3_mock_volume:
