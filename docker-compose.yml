@@ -1,6 +1,8 @@
 services:
     gcs-emulator:
         image: fsouza/fake-gcs-server:latest
+        volumes:
+            - storage_volume:/storage
         networks:
             - internal_net
         ports:
@@ -9,7 +11,7 @@ services:
           - "-external-url=http://gcs-emulator:4443"
           - "-scheme=http"
           - "-port=4443"
-          - "-backend=memory"
+          - "-backend=filesystem"
         
 
     db:
@@ -52,3 +54,4 @@ networks:
 
 volumes:
     database_volume:
+    storage_volume:

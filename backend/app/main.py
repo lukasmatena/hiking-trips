@@ -12,7 +12,7 @@ from pydantic import BaseModel, ValidationError
 
 from app_init import app
 from s3_handling import get_storage_bucket
-from database import db_get_connection, db_get_connection, db_get_pool
+from database import db_get_connection, db_get_pool
 
 from google.cloud import storage
 
@@ -198,18 +198,20 @@ async def update_trip(
                 WHERE trip_id = $5;
             """, updated_trip.title, updated_trip.desc, updated_trip.date_start, updated_trip.date_end, trip_id)
 
-            for photo_id in updated_trip.photos_to_delete:
+        for photo_id in updated_trip.photos_to_delete:
+            async with conn.transaction():
                 record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
                 if not record:
                     raise HTTPException(status_code=404, detail="Photo not found.")
-                await asyncio.to_thread(gcp_bucket.delete_blob, record["s3_key"])
                 await conn.execute("DELETE FROM photos WHERE photo_id=$1", photo_id)
+                await asyncio.to_thread(gcp_bucket.delete_blob, record["s3_key"])
 
-            for file in files:
-                if not file.filename:
-                    raise HTTPException(status_code=400)
-                _, ext = os.path.splitext(file.filename)
-                s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
+        for file in files:
+            if not file.filename:
+                raise HTTPException(status_code=400)
+            _, ext = os.path.splitext(file.filename)
+            s3_key = str(trip_id) + "/" + str(uuid.uuid4()) + ext
+            async with conn.transaction():
                 await conn.execute("INSERT INTO photos (trip_id, s3_key) VALUES ($1, $2);", trip_id, s3_key)
                 bucket: storage.Bucket = gcp_bucket
                 blob = bucket.blob(s3_key)
@@ -219,6 +221,7 @@ async def update_trip(
         logging.error(f"Validation error updating trip {trip_id}: {e.errors()}", exc_info=True)
         raise HTTPException(status_code=422, detail=e.errors())
     except HTTPException as e:
+        logging.error(f"HTTPException when updating trip {trip_id}: {e}", exc_info=True)
         raise e
     except Exception as e:
         logging.error(f"Unable to update trip {trip_id}: {e}", exc_info=True)
