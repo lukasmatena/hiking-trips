@@ -48,6 +48,9 @@ services:
             POSTGRES_PORT: 5432
             STORAGE_EMULATOR_HOST: http://gcs-emulator:4443
             GCP_STORAGE_BUCKET_NAME: ${GCP_STORAGE_BUCKET_NAME}
+            AUTH_PASSWORD_READER: ${AUTH_PASSWORD_READER}
+            AUTH_PASSWORD_ADMIN: ${AUTH_PASSWORD_ADMIN}
+            AUTH_SECRET_KEY: ${AUTH_SECRET_KEY}
 
 networks:
     internal_net:

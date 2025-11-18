@@ -7,16 +7,15 @@ import datetime
 import urllib
 
 from fastapi import Depends, HTTPException, UploadFile, Request, Form
+from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel, ValidationError
 
 import asyncpg
 from google.cloud import storage
 
-
-
 from app import app_inst
 import app
-
+from auth import create_token_or_none, reader_only, admin_only
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,7 +61,7 @@ async def get_photo_url_internal(photo_id: int, s3_key: str, gcp_bucket: storage
 
 
 @app_inst.get("/read_db")
-async def read_db(conn = Depends(app.db_get_connection)):
+async def read_db(conn = Depends(app.db_get_connection), _ = Depends(admin_only)):
     """TESTING ONLY"""
     try:
         async with conn.transaction(readonly = True):
@@ -239,3 +238,12 @@ async def delete_trip(trip_id: int, conn = Depends(app.db_get_connection)):
         raise HTTPException(status_code=400, detail="Cannot delete trip as it has photos attached.")
     except Exception as e:
         raise HTTPException(status_code=503, detail="Unable to delete trip from db")
+
+
+
+@app_inst.post("/login")
+async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    token: str | None = create_token_or_none(form_data.password)
+    if not token:
+        raise HTTPException(status_code=401, detail="Unknown password")
+    return {"access_token": token, "token_type": "bearer"}
