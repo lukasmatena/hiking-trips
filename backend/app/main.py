@@ -7,14 +7,16 @@ import datetime
 import urllib
 
 from fastapi import Depends, HTTPException, UploadFile, Request, Form
-import asyncpg
 from pydantic import BaseModel, ValidationError
 
-from app_init import app
-from s3_handling import get_storage_bucket
-from database import db_get_connection, db_get_pool
-
+import asyncpg
 from google.cloud import storage
+
+
+
+from app import app_inst
+import app
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,16 +49,7 @@ def get_next_prev_query() -> str:
             trip_id = $1;
     """
 
-async def get_photo_url_internal(photo_id: int, request: Request, gcp_bucket: storage.Bucket) -> tuple[int, str]:
-    pool = await db_get_pool(request)
-    async with pool.acquire() as conn:
-        async with conn.transaction(readonly = True):
-            record = await conn.fetchrow("SELECT s3_key FROM photos WHERE photo_id=$1;", photo_id)
-    if not record:
-        raise HTTPException(status_code=404, detail="Photo not found")
-
-    s3_key: str = record["s3_key"]
-    
+async def get_photo_url_internal(photo_id: int, s3_key: str, gcp_bucket: storage.Bucket) -> tuple[int, str]:
     if os.environ.get("STORAGE_EMULATOR_HOST"):
         # This is local development. Do not bother with signed URLs.
         encoded_key = urllib.parse.quote(s3_key, safe='')
@@ -64,13 +57,12 @@ async def get_photo_url_internal(photo_id: int, request: Request, gcp_bucket: st
     else:
         url = await asyncio.to_thread(gcp_bucket.get_blob(s3_key).generate_signed_url,
                                   expiration=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120))
-    logging.info(f"{url}")
     return (photo_id, url)
 
 
 
-@app.get("/read_db")
-async def read_db(conn = Depends(db_get_connection)):
+@app_inst.get("/read_db")
+async def read_db(conn = Depends(app.db_get_connection)):
     """TESTING ONLY"""
     try:
         async with conn.transaction(readonly = True):
@@ -80,8 +72,8 @@ async def read_db(conn = Depends(db_get_connection)):
     except Exception as e:
         raise HTTPException(status_code=503, detail = f"Error occurred: {type(e).__name__}")
 
-@app.put("/reset_db")
-async def reset_db(conn = Depends(db_get_connection)):
+@app_inst.put("/reset_db")
+async def reset_db(conn = Depends(app.db_get_connection)):
     """
     This request recreates the db from scratch from the given schema,
     destroing everything what is in there. Use with caution!
@@ -119,8 +111,8 @@ class TripBasicData(BaseModel):
     date_end: datetime.date
 
 
-@app.get("/trips", response_model=list[TripBasicData])
-async def get_trips(conn = Depends(db_get_connection)):
+@app_inst.get("/trips", response_model=list[TripBasicData])
+async def get_trips(conn = Depends(app.db_get_connection)):
     try:
         async with conn.transaction(readonly = True):
             trips = await conn.fetch("SELECT trip_id,title,date_start,date_end FROM trips ORDER BY date_start DESC;")
@@ -134,29 +126,25 @@ async def get_trips(conn = Depends(db_get_connection)):
 class PhotoData(BaseModel):
     url: str
     photo_id: int
-class TripDetailData(BaseModel):
-    trip_id: int
-    title: str
+class TripDetailData(TripBasicData, BaseModel):
     description: str
-    date_start: datetime.date
-    date_end: datetime.date
     prev_trip_id: int | None
     next_trip_id: int | None
     photos: list[PhotoData]
 
-@app.get("/trips/{trip_id}", response_model=TripDetailData)
-async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connection), gcp_bucket = Depends(get_storage_bucket)):
+@app_inst.get("/trips/{trip_id}", response_model=TripDetailData)
+async def get_trip(trip_id: int, request: Request, conn = Depends(app.db_get_connection), gcp_bucket = Depends(app.get_storage_bucket)):
     try:
         async with conn.transaction(readonly = True):
             query = "SELECT * FROM trips WHERE trip_id=$1"
             trip_data = await conn.fetchrow(query, trip_id)
-            query = "SELECT photo_id FROM photos WHERE trip_id=$1;"
+            query = "SELECT photo_id, s3_key FROM photos WHERE trip_id=$1;"
             photos_list = await conn.fetch(query, trip_id)
             if not trip_data:
                 logging.error(f"Trip {trip_id} not found.")
                 raise HTTPException(status_code=404, detail=f"Trip {trip_id} not found.")
             neighbors = await conn.fetchrow(get_next_prev_query(), trip_id)
-        coros = [get_photo_url_internal(p["photo_id"], request, gcp_bucket) for p in photos_list]
+        coros = [get_photo_url_internal(p["photo_id"], p["s3_key"], gcp_bucket) for p in photos_list]
         photos = await asyncio.gather(*coros)
         out = {k:v for (k,v) in trip_data.items()}
         out = out | {k:v for (k,v) in neighbors.items()}
@@ -171,23 +159,24 @@ async def get_trip(trip_id: int, request: Request, conn = Depends(db_get_connect
 
 
 
-class TripUpdateData(BaseModel):
-    title: str
+class TripUpdateData(TripBasicData, BaseModel):
     desc: str
-    date_start: datetime.date
-    date_end: datetime.date
     photos_to_delete: list[int]
 
-@app.put("/trips/{trip_id}")
+@app_inst.put("/trips/{trip_id}")
 async def update_trip(
     trip_id: int,
     updated_trip_json: str = Form(...), # Changed to Form parameter
     files: list[UploadFile] = [],
-    conn = Depends(db_get_connection),
-    gcp_bucket = Depends(get_storage_bucket)
+    conn = Depends(app.db_get_connection),
+    gcp_bucket = Depends(app.get_storage_bucket)
 ):
     try:
         updated_trip = TripUpdateData.model_validate_json(updated_trip_json) # Parse JSON string
+        if (updated_trip.trip_id != trip_id):
+            logging.error("Update trip_id mismatch")
+            raise HTTPException(status_code=400, detail="Update trip_id mismatch")
+
         async with conn.transaction():
             await conn.execute("""
                 UPDATE trips
@@ -227,8 +216,8 @@ async def update_trip(
         logging.error(f"Unable to update trip {trip_id}: {e}", exc_info=True)
         raise HTTPException(status_code=503, detail=f"Unable to update trip {type(e).__name__}")
 
-@app.post("/trips/")
-async def create_new_trip(conn = Depends(db_get_connection)):
+@app_inst.post("/trips/")
+async def create_new_trip(conn = Depends(app.db_get_connection)):
     init_date = datetime.date.today()
     try:
         async with conn.transaction():
@@ -241,8 +230,8 @@ async def create_new_trip(conn = Depends(db_get_connection)):
 
 
 
-@app.delete("/trips/{trip_id}")
-async def delete_trip(trip_id: int, conn = Depends(db_get_connection)):
+@app_inst.delete("/trips/{trip_id}")
+async def delete_trip(trip_id: int, conn = Depends(app.db_get_connection)):
     try:
         async with conn.transaction():
             await conn.execute("DELETE FROM trips WHERE trip_id=$1", trip_id)

@@ -1,12 +1,26 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from os import environ
 import google.cloud
 import asyncpg
 import logging
 from contextlib import asynccontextmanager
 
+def db_get_pool(request: Request):
+    if not hasattr(request.app.state, "pool") or not request.app.state.pool:
+        raise HTTPException(status_code=503, detail="DB pool not initialized.")
+    return request.app.state.pool
+
+async def db_get_connection(request: Request):
+    async with db_get_pool(request).acquire() as conn:
+        yield conn
+
+async def get_storage_bucket(request: Request):
+    if not hasattr(request.app.state, "gcp_storage_bucket") or not request.app.state.gcp_storage_bucket:
+        raise HTTPException(status_code=503, detail="Unable to access GCP Storage bucket.")
+    yield request.app.state.gcp_storage_bucket
+
 @asynccontextmanager
-async def app_init(app: FastAPI):
+async def app_init(app_inst: FastAPI):
     logging.info("Application initialization starts.")
     
     # Initialize db connection pool
@@ -31,21 +45,20 @@ async def app_init(app: FastAPI):
         bucket_name: str | None = environ.get("GCP_STORAGE_BUCKET_NAME")
         if not bucket_name:
             raise Exception("ERROR: unknown GCP Storage bucket name")
-        gcp_storage_client.create_bucket(bucket_name, timeout=10)
+        bucket = gcp_storage_client.create_bucket(bucket_name, timeout=10)
         logging.info(f" - GCP Storage bucket created ({bucket_name})")
     except google.cloud.exceptions.Conflict:
         logging.info(f" - GCP Storage bucket already exists ({bucket_name})")
+        bucket = gcp_storage_client.get_bucket(bucket_name)
     except Exception as e:
         logging.error(f" - Unable to create GCP Storage bucket ({bucket_name})")
         raise e
-
-    # Save both to app state
-    app.state.pool = pool
-
-    bucket = gcp_storage_client.get_bucket(bucket_name)
     if not bucket:
         raise Exception(f"ERROR: GCP Storage bucket not available ({bucket_name})")
-    app.state.gcp_storage_bucket = bucket
+
+    # Save both to app state
+    app_inst.state.pool = pool
+    app_inst.state.gcp_storage_bucket = bucket
 
     logging.info("Application initialization finished.")
     yield
@@ -55,4 +68,4 @@ async def app_init(app: FastAPI):
     await pool.close()
     logging.info("Cleanup complete.")
 
-app = FastAPI(lifespan=app_init, openapi_prefix="/api")
+app_inst = FastAPI(lifespan=app_init, openapi_prefix="/api")

@@ -2,22 +2,23 @@ interface PhotoData {
     photo_id: number;
     url: string;
 }
-interface TripDetail {
+
+interface TripBasicData {
     trip_id: number;
     title: string;
-    description: string;
     date_start: string;
     date_end: string;
+}
+
+interface TripDetail extends TripBasicData{
+    description: string;
     photos: PhotoData[];
     prev_trip_id: number | null;
     next_trip_id: number | null;
 }
 
-interface TripUpdateData {
-    title: string;
+interface TripUpdateData  extends TripBasicData{
     desc: string;
-    date_start: string;
-    date_end: string;
     photos_to_delete: number[];
 }
 
@@ -41,6 +42,7 @@ async function confirm_edits(tripData: TripDetail): Promise<void>
     }
 
     const tripUpdateData: TripUpdateData = {
+        trip_id: tripData.trip_id,
         title: editTitleElement.value,
         desc: editDescElement.value,
         date_start: editStartElement.value,
@@ -62,7 +64,7 @@ async function confirm_edits(tripData: TripDetail): Promise<void>
         }
     }
 
-    let response: Response = await fetch("/api/trips/" + tripData.trip_id.toString(), {
+    let response: Response = await fetch("/api/trips/" + tripUpdateData.trip_id.toString(), {
         method: "PUT",
         body: formData,
     });
