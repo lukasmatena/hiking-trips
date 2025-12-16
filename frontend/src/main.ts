@@ -1,4 +1,5 @@
 
+import { currentUser, updateCurrentUserState, loginUsingPassword, logOut} from './auth'
 
 interface TripData {
     trip_id: number;
@@ -8,12 +9,19 @@ interface TripData {
 }
 
 
+
 async function createList(response: Response)
 {
-    let tripsListElement = document.getElementById("tripsListElement") as HTMLDivElement;
-
     const data = await response.json() as TripData[]
     const tripList: Array<TripData> = data
+
+    let tripsListElement = document.getElementById("tripsListElement") as HTMLDivElement;
+    tripsListElement.innerHTML = "";
+
+    let heading = document.createElement("h1") as HTMLHeadingElement;
+    heading.textContent = tripList.length != 0 ? "Čundry" : "(nic tu není)";
+    tripsListElement.appendChild(heading);    
+    
     for (let i=0; i<tripList.length; ++i) {
         let link = document.createElement("a") as HTMLAnchorElement
         link.href = "detail.html?trip_id=" + tripList[i].trip_id.toString()
@@ -27,20 +35,74 @@ async function createList(response: Response)
     }
 }
 
+
+
 async function getTrips(): Promise<void>
 {
     const apiUrl = "api/trips"
-    const response = await fetch(apiUrl)
-    if (! response.ok) {
-        throw new Error("Unable to fetch list of trips")
+    const token = sessionStorage.getItem('token');
+    if (token) {
+        const response = await fetch(apiUrl, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        })
+        if (response.ok) {
+            await createList(response);
+            return;
+        }
     }
-    await createList(response)
+    let tripsListElement = document.getElementById("tripsListElement") as HTMLDivElement;
+    tripsListElement.innerHTML = "";
 }
 
-getTrips()
-    .then(() => {
-        console.log("OK")
-    })
-    .catch((err) => {
-        console.error('Error:', err);
-    });
+
+
+
+
+async function updateLoginPanel(): Promise<void>
+{
+    await updateCurrentUserState();
+
+
+    const loginElement = document.getElementById("loginElement") as HTMLDivElement;
+    loginElement.innerHTML = "";
+
+
+    if (currentUser.role == "") {
+        const loginText = document.createElement("p");
+        loginText.textContent = "Zadej heslo:";
+        loginElement.appendChild(loginText);
+        
+        const loginPassword = document.createElement("input");
+        loginPassword.setAttribute("type", "password");
+        loginElement.appendChild(loginPassword);
+
+        const loginButton = document.createElement("button");
+        loginButton.textContent = "Přihlásit se";
+        loginElement.appendChild(loginButton);
+
+        loginButton.onclick = async () => {
+            const pass: string = loginPassword.value;
+            loginPassword.value = "";
+            await loginUsingPassword(pass);
+            updateLoginPanel();
+        };
+        loginPassword.onkeydown = (e) => {
+            if (e.key == 'Enter')
+                loginButton.click();
+        };
+    } else {
+        const loginButton = document.createElement("button");
+        loginButton.textContent = `Odhlásit se (přihlášen jako ${currentUser.role})`;
+        loginElement.appendChild(loginButton);
+
+        loginButton.onclick = async () => {
+            await logOut();
+            updateLoginPanel();
+        };
+    }
+    await getTrips();
+}
+
+
+updateLoginPanel().catch(()=>{});
+

@@ -57,3 +57,11 @@ def admin_only(token: str = Depends(oauth2)):
     if role == ROLE_ADMIN:
         return True
     raise HTTPException(status_code=403)
+
+def get_me_role(token: str = Depends(oauth2)) -> str:
+    role: str|None = role_from_token(token)
+    if role:
+        return role
+    return ""
+
+

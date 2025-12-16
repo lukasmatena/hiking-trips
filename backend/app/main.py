@@ -15,7 +15,7 @@ from google.cloud import storage
 
 from app import app_inst
 import app
-from auth import create_token_or_none, reader_only, admin_only
+from auth import create_token_or_none, reader_only, admin_only, role_from_token, get_me_role
 
 logging.basicConfig(
     level=logging.INFO,
@@ -111,7 +111,7 @@ class TripBasicData(BaseModel):
 
 
 @app_inst.get("/trips", response_model=list[TripBasicData])
-async def get_trips(conn = Depends(app.db_get_connection)):
+async def get_trips(conn = Depends(app.db_get_connection), _ = Depends(reader_only)):
     try:
         async with conn.transaction(readonly = True):
             trips = await conn.fetch("SELECT trip_id,title,date_start,date_end FROM trips ORDER BY date_start DESC;")
@@ -246,4 +246,11 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     token: str | None = create_token_or_none(form_data.password)
     if not token:
         raise HTTPException(status_code=401, detail="Unknown password")
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer", "role": role_from_token(token) }
+
+
+@app_inst.get("/me")
+async def check_token(role: str = Depends(get_me_role)):
+    return role
+    
+
