@@ -71,38 +71,6 @@ async def read_db(conn = Depends(app.db_get_connection), _ = Depends(admin_only)
     except Exception as e:
         raise HTTPException(status_code=503, detail = f"Error occurred: {type(e).__name__}")
 
-@app_inst.put("/reset_db")
-async def reset_db(conn = Depends(app.db_get_connection)):
-    """
-    This request recreates the db from scratch from the given schema,
-    destroing everything what is in there. Use with caution!
-    """
-    try:
-        async with conn.transaction(readonly = False):
-            await conn.execute("""
-                DROP TABLE IF EXISTS photos;
-                DROP TABLE IF EXISTS trips;
-                CREATE TABLE trips (
-                    trip_id SERIAL PRIMARY KEY,
-                    title VARCHAR(255),
-                    description TEXT,
-                    date_start DATE,
-                    date_end DATE);
-                CREATE TABLE photos (
-                    photo_id SERIAL PRIMARY KEY,
-                    trip_id INT,
-                    s3_key TEXT,
-                    CONSTRAINT fk_trips_photos
-                        FOREIGN KEY (trip_id)
-                        REFERENCES trips(trip_id)
-                        ON DELETE RESTRICT
-                );
-                """)
-    except Exception as e:
-        logging.error(f"Failed to reset database: {e}", exc_info=True)
-        raise HTTPException(status_code=503, detail = f"{type(e).__name__}")
-
-
 class TripBasicData(BaseModel):
     trip_id: int
     title: str
