@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:stage": "npm run build && node -e \"const fs = require('fs'); fs.renameSync('dist/robots.stage.txt', 'dist/robots.txt'); fs.rmSync('dist/robots.prod.txt', { force: true });\" && firebase deploy --only hosting -P stage --config firebase.json",
+    "deploy:prod": "npm run build && node -e \"const fs = require('fs'); fs.renameSync('dist/robots.prod.txt', 'dist/robots.txt'); fs.rmSync('dist/robots.stage.txt', { force: true });\" && firebase deploy --only hosting -P prod --config firebase.json"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

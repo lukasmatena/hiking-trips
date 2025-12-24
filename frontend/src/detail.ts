@@ -212,8 +212,7 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
 
 async function readTripData(trip_id: number)
 {
-    const apiUrl = "api/trips/" + trip_id.toString()
-    const response = await fetch(apiUrl)
+    const response = await fetch("/api/trips/" + trip_id.toString())
     if (! response.ok)
         throw new Error("Error fetching data (" + response.status.toString() + ": " + response.statusText)
     return response

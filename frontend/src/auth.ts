@@ -9,7 +9,7 @@ export async function updateCurrentUserState() : Promise<void>
     currentUser.role = "";
     const token = sessionStorage.getItem("token")
     if (token) {
-        const response = await fetch("api/me", {
+        const response = await fetch(`/api/me`, {
             headers: {
                 "Authorization": `Bearer ${token}`
             }
@@ -23,13 +23,11 @@ export async function updateCurrentUserState() : Promise<void>
 
 export async function loginUsingPassword(pass: string): Promise<void>
 {
-    const apiUrl = "api/login";
-
     const body = new URLSearchParams();
     body.append('username', "dummyusername");
     body.append('password', pass);
 
-    const response = await fetch(apiUrl, {
+    const response = await fetch("/api/login", {
         method: 'POST',
         body: body
     });

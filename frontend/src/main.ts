@@ -39,10 +39,9 @@ async function createList(response: Response)
 
 async function getTrips(): Promise<void>
 {
-    const apiUrl = "api/trips"
     const token = sessionStorage.getItem('token');
     if (token) {
-        const response = await fetch(apiUrl, {
+        const response = await fetch("/api/trips", {
             headers: { 'Authorization': `Bearer ${token}` }
         })
         if (response.ok) {
