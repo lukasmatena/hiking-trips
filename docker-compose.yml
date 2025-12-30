@@ -35,7 +35,7 @@ services:
 
     backend-migrator:
         build: "./backend"
-        command: ["sh", "-c", "venv/bin/alembic upgrade head"]
+        command: ["sh", "-c", "cd .. && venv/bin/alembic upgrade head"]
         networks:
             - internal_net
         depends_on:
@@ -52,7 +52,7 @@ services:
         build: "./backend"
         volumes: # Only to speed up testing.
             - ./backend/app:/home/app/
-        command: ["sh", "-c", "cd app && ../venv/bin/uvicorn main:app_inst --reload --host 0.0.0.0 --port 8000 --proxy-headers"]
+        command: ["sh", "-c", "pwd && ../venv/bin/uvicorn main:app_inst --reload --host 0.0.0.0 --port 8000 --proxy-headers"]
         ports:
             - 8000:8000
         networks:
