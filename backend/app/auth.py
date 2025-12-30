@@ -5,6 +5,7 @@ from fastapi import HTTPException, Depends
 from fastapi.security import OAuth2PasswordBearer
 import logging
 import datetime
+import bcrypt
 from typing import Any
 
 
@@ -21,9 +22,14 @@ oauth2 = OAuth2PasswordBearer(tokenUrl="/login")
 
 def create_token_or_none(password: str) -> str | None:
     data: dict = {}
-    if password == environ.get("AUTH_PASSWORD_READER"):
+
+    admin_pass_hash: bytes = environ.get("AUTH_PASSWORD_ADMIN_BCRYPT_HASH").encode("utf-8")
+    reader_pass_hash: bytes = environ.get("AUTH_PASSWORD_READER_BCRYPT_HASH").encode("utf-8")
+    current_password: bytes = password.encode("utf-8")
+
+    if bcrypt.checkpw(current_password, reader_pass_hash):
         data["role"] = ROLE_READER
-    elif password == environ.get("AUTH_PASSWORD_ADMIN"):
+    elif bcrypt.checkpw(current_password, admin_pass_hash):
         data["role"] = ROLE_ADMIN
     else:
         return None

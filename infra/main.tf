@@ -204,7 +204,7 @@ resource "google_secret_manager_secret_version" "jwt_secret_val" {
 
 # --- C. Application Passwords (Provided by You via TF_VAR_) ---
 resource "google_secret_manager_secret" "admin_pass_box" {
-  secret_id = "admin-password"
+  secret_id = "admin-password-bcrypt-hash"
   replication {
     auto {}
   }
@@ -220,7 +220,7 @@ resource "google_secret_manager_secret_version" "admin_pass_val" {
 }
 
 resource "google_secret_manager_secret" "reader_pass_box" {
-  secret_id = "reader-password"
+  secret_id = "reader-password-bcrypt-hash"
   replication {
     auto {}
   }
@@ -373,7 +373,7 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
-        name = "AUTH_PASSWORD_ADMIN"
+        name = "AUTH_PASSWORD_ADMIN_BCRYPT_HASH"
         value_source {
           secret_key_ref {
             secret = google_secret_manager_secret.admin_pass_box.secret_id
@@ -382,7 +382,7 @@ resource "google_cloud_run_v2_service" "backend" {
         }
       }
       env {
-        name = "AUTH_PASSWORD_READER"
+        name = "AUTH_PASSWORD_READER_BCRYPT_HASH"
         value_source {
           secret_key_ref {
             secret = google_secret_manager_secret.reader_pass_box.secret_id
