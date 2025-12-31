@@ -200,11 +200,25 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
         contentElement.appendChild(editFilesDiv)
         append_new_br(contentElement)
 
+        let buttonDelete = document.createElement("button") as HTMLButtonElement
+        buttonDelete.id = "buttonDelete"
+        buttonDelete.addEventListener("click", async () => {
+            if (window.confirm("Určitě chceš čundr smazat?")) {
+                const apiUrl = "/api/trips/" + tripDetail.trip_id.toString()
+                const response = await fetch(apiUrl, { method: 'DELETE'})
+                if (! response.ok)
+                    console.log("Deleting trip failed");
+                else
+                    window.location.href = "index.html"
+            }
+        })
+        buttonDelete.textContent = "SMAZAT"
+        contentElement.appendChild(buttonDelete)
 
         let buttonConfirm = document.createElement("button") as HTMLButtonElement
         buttonConfirm.id = "buttonConfirm"
         buttonConfirm.addEventListener("click", () => { confirm_edits(tripDetail); })
-        buttonConfirm.textContent = "CONFIRM"
+        buttonConfirm.textContent = "Potvrdit"
         contentElement.appendChild(buttonConfirm)
     }
 }

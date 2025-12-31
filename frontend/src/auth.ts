@@ -15,7 +15,7 @@ export async function updateCurrentUserState() : Promise<void>
             }
         })
         if (response.ok)
-            currentUser.role = await response.text();
+            currentUser.role = (await response.json())["role"];
     }
 }
 
@@ -32,7 +32,7 @@ export async function loginUsingPassword(pass: string): Promise<void>
         body: body
     });
     if (response.ok) {
-        const data = JSON.parse(await response.text());
+        const data = await response.json();
         if (data.access_token.length != 0)
                 sessionStorage.setItem("token", data.access_token)
             else

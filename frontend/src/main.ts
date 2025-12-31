@@ -26,12 +26,30 @@ async function createList(response: Response)
         let link = document.createElement("a") as HTMLAnchorElement
         link.href = "detail.html?trip_id=" + tripList[i].trip_id.toString()
         let title = document.createElement("h2") as HTMLHeadingElement
-        title.textContent = tripList[i].title
+        title.textContent = tripList[i].title == "" ? "(nepojmenovaný)" : tripList[i].title;
 
         let linkDiv = document.createElement("div") as HTMLDivElement
         linkDiv.appendChild(title)
         link.appendChild(linkDiv)
         tripsListElement.appendChild(link);
+    }
+    if (currentUser.role == "admin") {
+        const addTripButton = document.createElement("button");
+        addTripButton.textContent = "Přidej nový čundr";
+        addTripButton.onclick = async () => {
+            const url: string = "/api/trips/";
+            const reqInit: RequestInit = {
+                method: 'POST'
+            }
+            const response = await fetch(url, reqInit);
+            if (! response.ok) {
+                console.log(`Add trip request failed`);
+            } else {
+                window.location.reload();
+            }
+        };
+        
+        tripsListElement.appendChild(addTripButton);
     }
 }
 
@@ -83,7 +101,7 @@ async function updateLoginPanel(): Promise<void>
             const pass: string = loginPassword.value;
             loginPassword.value = "";
             await loginUsingPassword(pass);
-            updateLoginPanel();
+            window.location.reload();
         };
         loginPassword.onkeydown = (e) => {
             if (e.key == 'Enter')
@@ -96,12 +114,13 @@ async function updateLoginPanel(): Promise<void>
 
         loginButton.onclick = async () => {
             await logOut();
-            updateLoginPanel();
+            window.location.reload();
         };
     }
-    await getTrips();
 }
 
 
 updateLoginPanel().catch(()=>{});
+getTrips().catch(()=>{});
+
 

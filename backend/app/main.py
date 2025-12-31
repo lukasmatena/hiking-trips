@@ -219,6 +219,6 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
 @app_inst.get("/me")
 async def check_token(role: str = Depends(get_me_role)):
-    return role
+    return {"role": role}
     
 
