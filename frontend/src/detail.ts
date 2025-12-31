@@ -1,3 +1,5 @@
+import { currentUser, updateCurrentUserState } from "./auth";
+
 interface PhotoData {
     photo_id: number;
     url: string;
@@ -64,9 +66,11 @@ async function confirm_edits(tripData: TripDetail): Promise<void>
         }
     }
 
+    const token = sessionStorage.getItem('token');
     let response: Response = await fetch("/api/trips/" + tripUpdateData.trip_id.toString(), {
         method: "PUT",
         body: formData,
+        headers: { 'Authorization': `Bearer ${token}` }
     });
 
     if (response.ok) {
@@ -148,18 +152,21 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
         next.textContent = "další"
         index.textContent = "zpátky na seznam"
 
-        let buttonMode = document.createElement("button") as HTMLButtonElement
-        buttonMode.textContent = "Editovat"
-        buttonMode.addEventListener("click", () => {
-            createPage(tripDetail, true)
-        })
         contentElement.appendChild(prev)
         contentElement.appendChild(index)
         contentElement.appendChild(next)
         contentElement.appendChild(title)
         contentElement.appendChild(desc)
         contentElement.appendChild(photosElement)
-        contentElement.appendChild(buttonMode)
+
+        if (currentUser.role == "admin") {
+            let buttonMode = document.createElement("button") as HTMLButtonElement
+            buttonMode.textContent = "Editovat"
+            buttonMode.onclick = async () => {
+                createPage(tripDetail, true)
+            };
+            contentElement.appendChild(buttonMode)
+        }
     } else {
         // Editing mode:
         let editTitleElement = document.createElement("input") as HTMLInputElement
@@ -205,7 +212,11 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
         buttonDelete.addEventListener("click", async () => {
             if (window.confirm("Určitě chceš čundr smazat?")) {
                 const apiUrl = "/api/trips/" + tripDetail.trip_id.toString()
-                const response = await fetch(apiUrl, { method: 'DELETE'})
+                const token = sessionStorage.getItem('token');
+                const response = await fetch(apiUrl, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                })
                 if (! response.ok)
                     console.log("Deleting trip failed");
                 else
@@ -226,7 +237,10 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
 
 async function readTripData(trip_id: number)
 {
-    const response = await fetch("/api/trips/" + trip_id.toString())
+    const token = sessionStorage.getItem('token');
+    const response = await fetch("/api/trips/" + trip_id.toString(), {
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
     if (! response.ok)
         throw new Error("Error fetching data (" + response.status.toString() + ": " + response.statusText)
     return response
@@ -258,9 +272,10 @@ function parseTripId(): number
 }
 
 
-try {
+
+updateCurrentUserState()
+.then(async() => {
     const trip_id = parseTripId()
     loadTrip(trip_id)
-} catch (error) {
-    console.log(error)
-}
+})
+.catch((error)=>{ console.log(error) });

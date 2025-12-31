@@ -58,19 +58,6 @@ async def get_photo_url_internal(photo_id: int, s3_key: str, gcp_bucket: storage
                                   expiration=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120))
     return (photo_id, url)
 
-
-
-@app_inst.get("/read_db")
-async def read_db(conn = Depends(app.db_get_connection), _ = Depends(admin_only)):
-    """TESTING ONLY"""
-    try:
-        async with conn.transaction(readonly = True):
-            trips = await conn.fetch("SELECT * FROM trips;")
-            photos = await conn.fetch("SELECT * FROM photos;")
-            return {"trips_table": list(trips), "photos_table": list(photos)}
-    except Exception as e:
-        raise HTTPException(status_code=503, detail = f"Error occurred: {type(e).__name__}")
-
 class TripBasicData(BaseModel):
     trip_id: int
     title: str
@@ -100,7 +87,10 @@ class TripDetailData(TripBasicData, BaseModel):
     photos: list[PhotoData]
 
 @app_inst.get("/trips/{trip_id}", response_model=TripDetailData)
-async def get_trip(trip_id: int, request: Request, conn = Depends(app.db_get_connection), gcp_bucket = Depends(app.get_storage_bucket)):
+async def get_trip(trip_id: int,
+                   conn = Depends(app.db_get_connection),
+                   gcp_bucket = Depends(app.get_storage_bucket),
+                   _ = Depends(reader_only)):
     try:
         async with conn.transaction(readonly = True):
             query = "SELECT * FROM trips WHERE trip_id=$1"
@@ -136,7 +126,8 @@ async def update_trip(
     updated_trip_json: str = Form(...), # Changed to Form parameter
     files: list[UploadFile] = [],
     conn = Depends(app.db_get_connection),
-    gcp_bucket = Depends(app.get_storage_bucket)
+    gcp_bucket = Depends(app.get_storage_bucket),
+    _ = Depends(admin_only)
 ):
     try:
         updated_trip = TripUpdateData.model_validate_json(updated_trip_json) # Parse JSON string
@@ -184,7 +175,7 @@ async def update_trip(
         raise HTTPException(status_code=503, detail=f"Unable to update trip {type(e).__name__}")
 
 @app_inst.post("/trips/")
-async def create_new_trip(conn = Depends(app.db_get_connection)):
+async def create_new_trip(conn = Depends(app.db_get_connection), _ = Depends(admin_only)):
     init_date = datetime.date.today()
     try:
         async with conn.transaction():
@@ -198,7 +189,7 @@ async def create_new_trip(conn = Depends(app.db_get_connection)):
 
 
 @app_inst.delete("/trips/{trip_id}")
-async def delete_trip(trip_id: int, conn = Depends(app.db_get_connection)):
+async def delete_trip(trip_id: int, conn = Depends(app.db_get_connection), _ = Depends(admin_only)):
     try:
         async with conn.transaction():
             await conn.execute("DELETE FROM trips WHERE trip_id=$1", trip_id)

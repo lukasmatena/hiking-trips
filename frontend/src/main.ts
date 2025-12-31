@@ -38,8 +38,10 @@ async function createList(response: Response)
         addTripButton.textContent = "Přidej nový čundr";
         addTripButton.onclick = async () => {
             const url: string = "/api/trips/";
+            const token = sessionStorage.getItem('token');
             const reqInit: RequestInit = {
-                method: 'POST'
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` }
             }
             const response = await fetch(url, reqInit);
             if (! response.ok) {
@@ -120,7 +122,8 @@ async function updateLoginPanel(): Promise<void>
 }
 
 
-updateLoginPanel().catch(()=>{});
-getTrips().catch(()=>{});
-
-
+updateLoginPanel()
+.then(async ()=>{
+    await getTrips();
+})
+.catch(()=>{});
