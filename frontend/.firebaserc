@@ -1,6 +1,0 @@
-{
-  "projects": {
-    "stage": "hiking-trips-stage",
-    "prod": "hiking-trips-prod"
-  }
-}

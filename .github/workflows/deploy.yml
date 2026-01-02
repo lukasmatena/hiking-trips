@@ -1,0 +1,75 @@
+name: Deploy Application
+
+# TODO: The file contains hardcoded values which are accessible as Terraform outputs.
+# Using Github Environments and passing them as env vars might be nicer, but what the hell.
+# Security is taken care of by WIF, the values do not have to be kept secret.
+
+on:
+  push:
+    branches:
+      - stage
+      - prod
+
+jobs:
+  deploy:
+    name: Deploy to ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    
+    # This permission allows GitHub to request the OIDC token
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set Environment Context
+        run: |
+          if [[ "${{ github.ref_name }}" == "prod" ]]; then
+            echo "ENV_NAME=prod" >> $GITHUB_ENV
+            
+            # Paste the outputs from Terraform here:
+            echo "WIF_SERVICE_ACCOUNT=github-actions@hiking-trips-prod.iam.gserviceaccount.com" >> $GITHUB_ENV
+            echo "WIF_PROVIDER=projects/925126769760/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider" >> $GITHUB_ENV
+          else
+            echo "ENV_NAME=stage" >> $GITHUB_ENV
+
+            # Paste the outputs from Terraform here:
+            echo "WIF_SERVICE_ACCOUNT=github-actions@hiking-trips-stage.iam.gserviceaccount.com" >> $GITHUB_ENV
+            echo "WIF_PROVIDER=projects/851937409158/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions-provider" >> $GITHUB_ENV
+          fi
+
+      # Authenticate using WIF
+      - name: Google Auth
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: '${{ env.WIF_PROVIDER }}'
+          service_account: '${{ env.WIF_SERVICE_ACCOUNT }}'
+
+      - name: Set up Cloud SDK
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: Configure Docker
+        # This will now use the WIF credentials automatically
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev
+
+      - name: Deploy Backend
+        run: |
+          cd backend
+          chmod +x deploy.sh
+          ./deploy.sh ${{ env.ENV_NAME }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Deploy Frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run deploy:${{ env.ENV_NAME }}

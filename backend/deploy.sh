@@ -38,7 +38,7 @@ echo "Deploying $TAG to $1..."
 set -e # so the script stops if the build fails
 
 # Sends code to Google so it can build the image and save it.
-gcloud builds submit . --project "$PROJECT_ID" --tag "$IMAGE_URL"
+gcloud builds submit . --project "$PROJECT_ID" --tag "$IMAGE_URL" --gcs-log-dir="gs://${PROJECT_ID}_cloudbuild/logs"
 
 gcloud run deploy trips-backend \
   --image="$IMAGE_URL" \

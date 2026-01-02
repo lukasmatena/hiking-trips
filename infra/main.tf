@@ -27,6 +27,8 @@
 #       - 'Secret Manager Secret Accessor'
 #       - 'Project IAM Admin' (to manage permissions for sub-resources)
 #       - 'Cloud Run Admin' (to manage public access)
+#       - 'Service Account Admin'
+#       - 'Workload Identity Pool Admin'
 #
 # B. BUCKET PERMISSIONS
 #    1. Go to the Admin Project -> State Bucket -> Permissions.
@@ -129,7 +131,12 @@ locals {
     "cloudbuild.googleapis.com",
     "serviceusage.googleapis.com",     # Required for Terraform to check APIs
   ])
+  
+  # This will cause a clear error if they don't match
+  workspace_check = terraform.workspace == var.environment ? true : file("ERROR: Workspace and Environment mismatch!")
 }
+
+
 
 resource "google_project_service" "enabled_services" {
   for_each = local.services
@@ -472,4 +479,83 @@ resource "google_firebase_web_app" "frontend" {
   display_name = "Frontend (${var.environment})"
 
   depends_on = [google_firebase_project.default]
+}
+
+# ==============================================================================
+# 7. GITHUB ACTIONS SETUP
+# ==============================================================================
+
+# 0. Set up service account.
+resource "google_service_account" "github_actions" {
+  account_id   = "github-actions"
+  display_name = "GitHub Actions Deployment SA"
+  description  = "Used by GitHub Actions to deploy Backend and Frontend"
+}
+locals {
+  github_actions_roles = [
+    "roles/artifactregistry.writer",  # Allow it to push Docker images to Artifact Registry
+    "roles/serviceusage.serviceUsageConsumer", # Allow GitHub Actions to "bill" the project
+    "roles/storage.admin", # Allow GitHub Actions to upload source code to the staging bucket
+    "roles/cloudbuild.builds.editor", # Allow GitHub Actions to submit builds to Cloud Build
+    "roles/run.admin", # Allow it to deploy to Cloud Run
+    "roles/firebasehosting.admin"# Allow it to deploy to Firebase (Frontend)
+  ]
+}
+resource "google_project_iam_member" "github_roles" {
+  for_each = toset(local.github_actions_roles)
+
+  project = var.project_id
+  role    = each.value
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+# Allow build submission. We must use project-level scope because Terraform
+# cannot "see" the Default Cloud Build SA to apply granular policies to it.
+resource "google_project_iam_member" "github_act_as_builder" {
+  project = var.project_id
+  role    = "roles/iam.serviceAccountUser"
+  member  = "serviceAccount:${google_service_account.github_actions.email}"
+}
+# Allow runtime assignment. This strictly limits GitHub Actions to ONLY using
+# the Backend SA for the Cloud Run service, protecting all other Service Accounts in the project.
+resource "google_service_account_iam_member" "github_act_as_runtime" {
+  service_account_id = google_service_account.backend_sa.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${google_service_account.github_actions.email}"
+}
+
+# 1. Create the Pool
+resource "google_iam_workload_identity_pool" "github_pool" {
+  workload_identity_pool_id = "github-actions-pool"
+  display_name              = "GitHub Actions Pool"
+  description               = "Identity pool for GitHub Actions"
+  disabled                  = false
+}
+
+# 2. Create the Provider (The bridge between GitHub and Google)
+resource "google_iam_workload_identity_pool_provider" "github_provider" {
+  workload_identity_pool_id          = google_iam_workload_identity_pool.github_pool.workload_identity_pool_id
+  workload_identity_pool_provider_id = "github-actions-provider"
+  display_name                       = "GitHub Actions Provider"
+  description                        = "OIDC identity provider for GitHub Actions"
+  disabled                           = false
+
+  # This tells Google who to trust (GitHub)
+  attribute_mapping = {
+    "google.subject"       = "assertion.sub"
+    "attribute.actor"      = "assertion.actor"
+    "attribute.repository" = "assertion.repository"
+  }
+  attribute_condition = "attribute.repository == 'lukasmatena/hiking-trips'"
+
+  oidc {
+    issuer_uri = "https://token.actions.githubusercontent.com"
+  }
+}
+
+# 3. Grant the "Identity User" role to the Service Account
+# This says: "This github repo is allowed to impersonate this Service Account"
+resource "google_service_account_iam_member" "wif_binding" {
+  service_account_id = google_service_account.github_actions.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github_pool.name}/attribute.repository/lukasmatena/hiking-trips"
 }
