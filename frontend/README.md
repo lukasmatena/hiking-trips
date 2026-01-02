@@ -8,9 +8,8 @@ This folder mixes application code with deployment configuration. Here is what y
 
 * **`vite.config.ts`**: Configures the build. It also sets up a **Proxy** (`/api` -> `localhost:8000`) so local development works without CORS issues.
 * **`firebase.json`**: The hosting configuration for production (Security headers, clean URLs, etc.).
-* **`.firebaserc`**: Maps deployment aliases (`stage`, `prod`) to the actual Google Cloud Project IDs.
 * **`package.json`**: Contains custom deployment scripts that handle build modes and `robots.txt` swapping.
-* **`public/`**: Static assets copied 1:1 to `dist/`. Contains `robots.stage.txt` and `robots.prod.txt`.
+* **`public/`**: Static assets copied 1:1 to `dist/`.
 
 ---
 

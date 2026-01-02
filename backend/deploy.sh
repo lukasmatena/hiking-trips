@@ -14,7 +14,9 @@
 # $ venv/Scripts/alembic upgrade head
 
 
-# The actual deploy script follows:
+# The actual deploy script follows.
+# Note that your CLI session must be authenticated to Google using `gcloud auth login`.
+
 
 
 if [ "$1" != "stage" ] && [ "$1" != "prod" ]; then
