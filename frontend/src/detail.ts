@@ -138,13 +138,14 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
 
     if (! editingMode) {
         let title = document.createElement("h1") as HTMLHeadingElement
-        let desc = document.createElement("p") as HTMLHeadingElement
+        let desc = document.createElement("p") as HTMLParagraphElement
         let prev = document.createElement("a") as HTMLAnchorElement
         let next = document.createElement("a") as HTMLAnchorElement
         let index = document.createElement("a") as HTMLAnchorElement
 
         title.textContent = tripDetail.title
         desc.textContent = tripDetail.description
+        desc.style.whiteSpace = "pre-wrap";
         prev.href = tripDetail.prev_trip_id ? "detail.html?trip_id=" + tripDetail.prev_trip_id.toString() : ""
         next.href = tripDetail.next_trip_id ? "detail.html?trip_id=" + tripDetail.next_trip_id.toString() : ""
         index.href = "index.html"

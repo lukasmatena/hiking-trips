@@ -26,11 +26,10 @@ async function createList(response: Response)
         let link = document.createElement("a") as HTMLAnchorElement
         link.href = "detail.html?trip_id=" + tripList[i].trip_id.toString()
         let title = document.createElement("h2") as HTMLHeadingElement
-        title.textContent = tripList[i].title == "" ? "(nepojmenovaný)" : tripList[i].title;
-
+        title.textContent = tripList[i].date_start + " " + (tripList[i].title == "" ? "(nepojmenovaný)" : tripList[i].title);
         let linkDiv = document.createElement("div") as HTMLDivElement
-        linkDiv.appendChild(title)
-        link.appendChild(linkDiv)
+        linkDiv.appendChild(title);
+        link.appendChild(linkDiv);
         tripsListElement.appendChild(link);
     }
     if (currentUser.role == "admin") {
@@ -101,8 +100,12 @@ async function updateLoginPanel(): Promise<void>
 
         loginButton.onclick = async () => {
             const pass: string = loginPassword.value;
-            loginPassword.value = "";
+            loginButton.textContent = "Zpracovávám...";
             await loginUsingPassword(pass);
+            if (currentUser.role == "") {
+                window.alert("Chybné heslo!");
+            }
+            loginPassword.value = "";
             window.location.reload();
         };
         loginPassword.onkeydown = (e) => {
