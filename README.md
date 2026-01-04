@@ -17,7 +17,7 @@ Despite the simplicity of the app, the stack is meant to be robust and well made
 - PostgreSQL (asyncpg)
 - raw SQL queries (no ORM)
 - migrations handled by alembic
-- Google Cloud Storage bucket for photos
+- GCP Storage bucket for photos (private, backend requests presigned URLs)
 
 #### Frontend
 - very basic vanilla TypeScript for now

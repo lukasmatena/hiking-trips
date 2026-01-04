@@ -12,6 +12,8 @@ from pydantic import BaseModel, ValidationError
 
 import asyncpg
 from google.cloud import storage
+import google.auth
+import google.auth.transport.requests
 
 from app import app_inst
 import app
@@ -54,8 +56,19 @@ async def get_photo_url_internal(photo_id: int, s3_key: str, gcp_bucket: storage
         encoded_key = urllib.parse.quote(s3_key, safe='')
         url = f"http://localhost:4443/download/storage/v1/b/{gcp_bucket.name}/o/{encoded_key}?alt=media"
     else:
+        sa_email: str | None = os.environ.get("STORAGE_SERVICE_ACCOUNT")
+        if not sa_email:
+            raise HTTPException(status_code=500, detail="STORAGE_SERVICE_ACCOUNT env var not defined")
+        credentials, _ = google.auth.default()
+        if not credentials.token:
+            request = google.auth.transport.requests.Request()
+            credentials.refresh(request)
         url = await asyncio.to_thread(gcp_bucket.get_blob(s3_key).generate_signed_url,
-                                  expiration=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120))
+                                  version="v4",
+                                  method="GET",
+                                  expiration=datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=120),
+                                  service_account_email = sa_email,
+                                  access_token = credentials.token)
     return (photo_id, url)
 
 class TripBasicData(BaseModel):

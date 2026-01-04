@@ -110,20 +110,27 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
     contentElement.innerHTML = ""
 
     let photosElement = document.createElement("div") as HTMLDivElement
+    photosElement.style.display = "flex";
+    photosElement.style.flexDirection = "column";
+    photosElement.style.alignItems = editingMode ? "left" : "center";
+    photosElement.style.gap = editingMode ? "0" : "20px";
+    photosElement.style.width = editingMode ? "100px" : "100%";
+
     const photoData: PhotoData[] = tripDetail.photos
     for (let i=0; i<photoData.length; ++i) {
         const photoTitleText: string = "photo number " + i.toString()
         const photoUrl: string = photoData[i].url
         const photoId: number = photoData[i].photo_id
-        let photoLink = document.createElement("a") as HTMLAnchorElement
         let photoImage = document.createElement("img") as HTMLImageElement
         photoImage.src = photoUrl
         photoImage.title = photoTitleText
         photoImage.alt = photoTitleText
-        photoLink.href = photoUrl
-        photoLink.appendChild(photoImage)
-        photosElement.appendChild(photoLink)
-        append_new_br(photosElement)
+
+        photoImage.style.width = "100%";
+        photoImage.style.height = "auto";
+        photoImage.style.borderRadius = "8px";
+
+        photosElement.appendChild(photoImage)
         if (editingMode) {
             let checkboxElement = document.createElement("input") as HTMLInputElement
             checkboxElement.type = "checkbox"
@@ -132,7 +139,6 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
             photosElement.appendChild(checkboxElement)
             append_new_br(photosElement)
             append_new_br(photosElement)
-            photoImage.width = 100 // only to see what it is
         }
     }
 

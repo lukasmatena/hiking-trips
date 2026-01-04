@@ -220,6 +220,13 @@ resource "google_project_iam_member" "storage_admin" {
   member  = "serviceAccount:${google_service_account.backend_sa.email}"
   depends_on = [ google_project_service.enabled_services ]
 }
+# Allow the Backend SA to sign blobs ONLY for itself (Remote Signing)
+# We use 'google_service_account_iam_member' instead of 'google_project_iam_member'
+resource "google_service_account_iam_member" "backend_self_sign" {
+  service_account_id = google_service_account.backend_sa.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = "serviceAccount:${google_service_account.backend_sa.email}"
+}
 
 resource "google_cloud_run_v2_service" "backend" {
   name     = "trips-backend"
@@ -261,6 +268,10 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "GCP_STORAGE_BUCKET_NAME"
         value = google_storage_bucket.media.name
+      }
+      env {
+        name  = "STORAGE_SERVICE_ACCOUNT" 
+        value = google_service_account.backend_sa.email
       }
 
       # --- INJECT SECRETS ---
