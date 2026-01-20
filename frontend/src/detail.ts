@@ -116,15 +116,32 @@ async function createPage(tripDetail: TripDetail, editingMode: boolean)
     photosElement.style.gap = editingMode ? "0" : "20px";
     photosElement.style.width = editingMode ? "100px" : "100%";
 
+    const videoRegex = new RegExp("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.[mM][pP]4");
+
     const photoData: PhotoData[] = tripDetail.photos
     for (let i=0; i<photoData.length; ++i) {
         const photoTitleText: string = "photo number " + i.toString()
         const photoUrl: string = photoData[i].url
         const photoId: number = photoData[i].photo_id
-        let photoImage = document.createElement("img") as HTMLImageElement
+        let photoImage : HTMLImageElement | HTMLVideoElement;
+        if (videoRegex.test(photoUrl)) {
+            const video = document.createElement("video") as HTMLVideoElement;    
+            video.controls = true;
+            video.playsInline = true;
+            video.muted = true;
+            video.preload = "metadata";
+            const source = document.createElement("source");
+            source.src = photoUrl;
+            source.type = "video/mp4";
+            video.appendChild(source);
+            video.load();
+            photoImage = video;
+        } else {
+            photoImage = document.createElement("img") as HTMLImageElement
+            photoImage.alt = photoTitleText
+        }
         photoImage.src = photoUrl
         photoImage.title = photoTitleText
-        photoImage.alt = photoTitleText
 
         photoImage.style.width = "100%";
         photoImage.style.height = "auto";
